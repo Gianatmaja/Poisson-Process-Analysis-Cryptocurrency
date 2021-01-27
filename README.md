@@ -2,6 +2,7 @@
 
 ## Interactive Web App
 Web App: https://gian-atmaja.shinyapps.io/Cryptocurrency_Dashboard/
+*May take some time to load
 
 ## Quick Links 
 Web App Codes: https://github.com/Gianatmaja/Poisson-Process-Analysis-Cryptocurrency/blob/main/Dashboard.Rmd
