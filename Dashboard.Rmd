@@ -1,0 +1,391 @@
+---
+title: "Cryptocurrency Dashboard"
+author: "Gian Atmaja"
+date: "1/17/2021"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    source_code: https://github.com/Gianatmaja/Poisson-Process-Analysis-Cryptocurrency
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+######################### Libraries ########################### 
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(shiny)
+library(flexdashboard)
+
+############################ Data ############################# 
+Bitcoin = read.csv('BTC-USD.csv')
+Ethereum = read.csv('ETH-USD.csv')
+Litecoin = read.csv('LTC-USD.csv')
+NEM = read.csv('XEM-USD.csv')
+Stellar = read.csv('XLM-USD.csv')
+Monero = read.csv('XMR-USD.csv')
+XRP = read.csv('XRP-USD.csv')
+
+#######################  Functions ############################
+Daily_Changes = function(Data){
+  Closing_price = Data$Close
+  Pct_change = 100*(Closing_price[2:1827] - Closing_price[1:1826])/Closing_price[1:1826]
+  
+  return(Pct_change)
+}
+
+EDA = function(Change, Gain_input){
+  if(Gain_input == "Positive Gains"){
+    Num = length(which(Change > 0))
+    Den = length(Change)
+    Rate = Num/Den
+    
+    Mean = mean(Change[which(Change > 0)])
+    
+    Biggest = max(Change)
+    Ind = which(Change == Biggest)
+    Date_biggest = Dates[Ind+1]
+  }else{
+    Num = length(which(Change < 0))
+    Den = length(Change)
+    Rate = Num/Den
+    
+    Mean = mean(Change[which(Change < 0)])
+    
+    Biggest = min(Change)
+    Ind = which(Change == Biggest)
+    Date_biggest = Dates[Ind+1]
+  }
+  Sol = c(Rate, Mean, Biggest, Date_biggest)
+  return(Sol)
+}
+
+Count_lambda = function(Data, thres){
+  
+  Closing_price = Data$Close
+  Pct_change = 100*(Closing_price[2:1827] - Closing_price[1:1826])/Closing_price[1:1826]
+  
+  if (thres < 0){
+    sol = length(which(Pct_change <= thres))
+  }else{
+    sol = length(which(Pct_change >= thres))
+  }
+  
+  return(sol/1826)
+}
+
+PP_analysis = function(Key, Gain_input){
+  Ind = which(Crypto == Key)
+  
+  if(Gain_input == "Positive Gains"){
+    lambdas = Gain_lambda[Ind,]
+  }else{
+    lambdas = Loss_lambda[Ind,]
+  }
+  Range = seq(from = 0, to = 50, by = 1)
+  
+  Over5 = dpois(Range, 365*lambdas[1])
+  Over10 = dpois(Range, 365*lambdas[2])
+  Over15 = dpois(Range, 365*lambdas[3])
+  Over20 = dpois(Range, 365*lambdas[4])
+  
+  Sol = data.frame(
+    Frequency = Range,
+    Over_5_percent = Over5,
+    Over_10_percent = Over10,
+    Over_15_percent = Over15,
+    Over_20_percent = Over20
+  )
+  
+  return(Sol)
+}
+
+##############################  Setup  ################################
+Dates = Bitcoin$Date
+Crypto = c("Bitcoin", "Ethereum", "Litecoin", "NEM", "Stellar", "Monero", "XRP")
+N = length(Crypto)
+Gain_5 = vector("numeric", N)
+Gain_10 = vector("numeric", N)
+Gain_15 = vector("numeric", N)
+Gain_20 = vector("numeric", N)
+Loss_5 = vector("numeric", N)
+Loss_10 = vector("numeric", N)
+Loss_15 = vector("numeric", N)
+Loss_20 = vector("numeric", N)
+for (i in 1:N){
+  if (i == 1){
+    Data = Bitcoin
+  }else if (i == 2){
+    Data = Ethereum
+  }else if (i == 3){
+    Data = Litecoin
+  }else if (i == 4){
+    Data = NEM
+  }else if (i == 5){
+    Data = Stellar
+  }else if (i == 6){
+    Data = Monero
+  }else{
+    Data = XRP
+  }
+  
+  Gain_5[i] = Count_lambda(Data, 5)
+  Gain_10[i] = Count_lambda(Data, 10)
+  Gain_15[i] = Count_lambda(Data, 15)
+  Gain_20[i] = Count_lambda(Data, 20)
+  Loss_5[i] = Count_lambda(Data, -5)
+  Loss_10[i] = Count_lambda(Data, -10)
+  Loss_15[i] = Count_lambda(Data, -15)
+  Loss_20[i] = Count_lambda(Data, -20)
+}
+Gain_lambda = matrix(c(Gain_5, Gain_10, Gain_15, Gain_20), ncol = 4)  
+#col 1 = +5%, col 2 = +10%, ...
+Loss_lambda = matrix(c(Loss_5, Loss_10, Loss_15, Loss_20), ncol = 4)  
+#Same, but - instead of +
+
+```
+
+Sidebar {.sidebar}
+=======================================================================
+```{r}
+selectInput("Asset", label = "Cryptocurrency:",
+            choices =c("Bitcoin", "Ethereum", "Litecoin", 
+                       "NEM", "Stellar", "Monero", "XRP"), selected = "Bitcoin")
+
+selectInput("Gain", label = "Chosen Gains:",
+            choices =c("Positive Gains", "Negative Gains"), selected = "Positive Gains")
+
+```
+
+This dashboard shows an analysis of 7 cryptocurrencies' daily price changes, namely Bitcoin, Ethereum, Litecoin, NEM, Stellar, Monero, XRP. 
+
+Simply choose one of the 7 cryptocurrencies and select which gains to analyse, either positive or negative. 
+
+The smaller boxes in top row show some key figures of the asset, such as the chance of the chosen daily gain (+/-), average size of the positive/ negative daily gains, the largest positive/ negative daily gains recorded, and the date it occurred. 
+
+On the second row, the left plot shows the daily changes (in %) of the asset, while the plot on the right shows the probability distribution function of the frequencies for daily changes of different magnitudes in a year.
+
+Dashboard
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Daily Chance of Chosen Gain
+
+```{r}
+Asset_input = reactive({input$Asset})
+Gain_input = reactive({input$Gain})
+renderGauge({
+  Crypto = c("Bitcoin", "Ethereum", "Litecoin", "NEM", "Stellar", "Monero", "XRP")
+  Data_Ind = which(Crypto == Asset_input())
+  if (Data_Ind == 1){
+    Data = Bitcoin
+    }else if (Data_Ind == 2){
+    Data = Ethereum
+  }else if (Data_Ind == 3){
+    Data = Litecoin
+  }else if (Data_Ind == 4){
+    Data = NEM
+  }else if (Data_Ind == 5){
+    Data = Stellar
+  }else if (Data_Ind == 6){
+    Data = Monero
+  }else{
+    Data = XRP
+  }
+
+  Asset_Change = Daily_Changes(Data)
+  EDA_output = EDA(Asset_Change, Gain_input())
+
+  Chance_gain_loss = round(as.numeric(EDA_output[1])*100)
+  if(Gain_input() == "Positive Gains"){
+    Success = c(51, 100)
+    Warning = c(0, 49)
+  }else{
+    Success = c(0, 49)
+    Warning = c(51, 100)
+  }
+  gauge(Chance_gain_loss, min = 0, max = 100, symbol = '%', label = "Chance",
+        gaugeSectors(success = Success, warning = Warning))
+})
+```
+
+
+### Average Value of Chosen Gains
+
+```{r}
+library(shinydashboard)
+Asset_input = reactive({input$Asset})
+Gain_input = reactive({input$Gain})
+renderValueBox({
+  Crypto = c("Bitcoin", "Ethereum", "Litecoin", "NEM", "Stellar", "Monero", "XRP")
+  Data_Ind = which(Crypto == Asset_input())
+  if (Data_Ind == 1){
+    Data = Bitcoin
+    }else if (Data_Ind == 2){
+    Data = Ethereum
+  }else if (Data_Ind == 3){
+    Data = Litecoin
+  }else if (Data_Ind == 4){
+    Data = NEM
+  }else if (Data_Ind == 5){
+    Data = Stellar
+  }else if (Data_Ind == 6){
+    Data = Monero
+  }else{
+    Data = XRP
+  }
+  Asset_Change = Daily_Changes(Data)
+  EDA_output = EDA(Asset_Change, Gain_input())
+  Mean_change = round(as.numeric(EDA_output[2]),2)
+  if(Gain_input() == "Positive Gains"){
+    Color2 = "green"
+    Caption = "Avg Magnitude of Positive Gains (%)"
+  }else{
+    Color2 = "yellow"
+    Caption = "Avg Magnitude of Negative Gains (%)"
+  }
+  valueBox(Mean_change, Caption, color = Color2)
+})
+```
+
+
+### Biggest Movement of Chosen Gain
+
+```{r}
+library(shinydashboard)
+Asset_input = reactive({input$Asset})
+Gain_input = reactive({input$Gain})
+renderValueBox({
+  Crypto = c("Bitcoin", "Ethereum", "Litecoin", "NEM", "Stellar", "Monero", "XRP")
+  Data_Ind = which(Crypto == Asset_input())
+  if (Data_Ind == 1){
+    Data = Bitcoin
+    }else if (Data_Ind == 2){
+    Data = Ethereum
+  }else if (Data_Ind == 3){
+    Data = Litecoin
+  }else if (Data_Ind == 4){
+    Data = NEM
+  }else if (Data_Ind == 5){
+    Data = Stellar
+  }else if (Data_Ind == 6){
+    Data = Monero
+  }else{
+    Data = XRP
+  }
+  Asset_Change = Daily_Changes(Data)
+  EDA_output = EDA(Asset_Change, Gain_input())
+  Biggest_change = round(as.numeric(EDA_output[3]),2)
+  if(Gain_input() == "Positive Gains"){
+    Caption = "Largest Magnitude of Positive Gains (%)"
+  }else{
+    Caption = "Largest Magnitude of Negative Gains (%)"
+  }
+  valueBox(Biggest_change, Caption)
+})
+```
+
+
+### Date of Largest Movement
+
+```{r}
+library(shinydashboard)
+Asset_input = reactive({input$Asset})
+Gain_input = reactive({input$Gain})
+renderValueBox({
+  Crypto = c("Bitcoin", "Ethereum", "Litecoin", "NEM", "Stellar", "Monero", "XRP")
+  Data_Ind = which(Crypto == Asset_input())
+  if (Data_Ind == 1){
+    Data = Bitcoin
+    }else if (Data_Ind == 2){
+    Data = Ethereum
+  }else if (Data_Ind == 3){
+    Data = Litecoin
+  }else if (Data_Ind == 4){
+    Data = NEM
+  }else if (Data_Ind == 5){
+    Data = Stellar
+  }else if (Data_Ind == 6){
+    Data = Monero
+  }else{
+    Data = XRP
+  }
+  Asset_Change = Daily_Changes(Data)
+  EDA_output = EDA(Asset_Change, Gain_input())
+  Date_biggest = as.Date(EDA_output[4])
+  if(Gain_input() == "Positive Gains"){
+    Caption = "Date of Largest Positive Gain (YYYY/MM/DD)"
+  }else{
+    Caption = "Date of Largest Negative Gain (YYYY/MM/DD)"
+  }
+  valueBox(Date_biggest, Caption)
+})
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Daily Change in Price (%)
+
+```{r}
+Asset_input = reactive({input$Asset})
+Gain_input = reactive({input$Gain})
+renderPlotly({
+  Crypto = c("Bitcoin", "Ethereum", "Litecoin", "NEM", "Stellar", "Monero", "XRP")
+  Data_Ind = which(Crypto == Asset_input())
+  if (Data_Ind == 1){
+    Data = Bitcoin
+    }else if (Data_Ind == 2){
+    Data = Ethereum
+  }else if (Data_Ind == 3){
+    Data = Litecoin
+  }else if (Data_Ind == 4){
+    Data = NEM
+  }else if (Data_Ind == 5){
+    Data = Stellar
+  }else if (Data_Ind == 6){
+    Data = Monero
+  }else{
+    Data = XRP
+  }
+  Asset_Change = Daily_Changes(Data)
+  Change_Table = data.frame(
+    Date = as.Date(Dates[2:1827]),
+    Percentage_change = Asset_Change
+    )
+  P1 = ggplot(data = Change_Table) + 
+    geom_line(aes(x = Date, y = Percentage_change, group = 1), col = "navy") +
+    xlab("\nDate") + ylab("% Change\n") + theme_minimal() + 
+    theme(plot.title = element_text(hjust = 0, size = 17 , face = "bold"))
+  Plot_1 = ggplotly(P1) 
+  Plot_1
+})
+```
+
+
+### Probabilities for Shifts of Different Magnitudes (in 1 Year)
+```{r}
+Asset_input = reactive({input$Asset})
+Gain_input = reactive({input$Gain})
+renderPlotly({
+  PP_output = PP_analysis(Asset_input(), Gain_input())
+  if(Gain_input() == "Positive Gains"){
+    colors = c("Over 5%" = "gold", "Over 10%" = "olivedrab2", "Over 15%" = "springgreen2", "Over 20%" = "seagreen4")
+  }else{
+    colors = c("Over 5%" = "mediumpurple2", "Over 10%" = "violetred1", "Over 15%" = "red1", "Over 20%" = "red4")
+  }
+
+  P2 = ggplot(data = PP_output) +
+    geom_area(aes(x = Frequency, y = Over_5_percent, fill = "Over 5%"), size = 2, alpha = 0.6) + geom_area(aes(x = Frequency, y = Over_10_percent, fill = "Over 10%"), size = 2, alpha = 0.6) + 
+    geom_area(aes(x = Frequency, y = Over_15_percent, fill = "Over 15%"), size = 2, alpha = 0.6) +
+    geom_area(aes(x = Frequency, y = Over_20_percent, fill = "Over 20%"), size = 2, alpha = 0.6) +
+    labs(x = "Frequency", y = "Probability", fill = " ") + scale_fill_manual(values = colors) + theme_minimal() + theme(plot.title = element_text(hjust = 0, size = 17 , face = "bold")) 
+  Plot_2 = ggplotly(P2)
+  Plot_2
+})
+```
+
+
