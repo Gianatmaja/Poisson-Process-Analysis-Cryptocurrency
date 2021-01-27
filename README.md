@@ -1,7 +1,7 @@
 # A Poisson Process Analysis on Cryptocurrencies
 
 ## Interactive Web App
-Web App: https://gian-atmaja.shinyapps.io/Cryptocurrency_Dashboard/
+Web App: https://gian-atmaja.shinyapps.io/Cryptocurrency_Dashboard/ 
 *May take some time to load
 
 ## Quick Links 
